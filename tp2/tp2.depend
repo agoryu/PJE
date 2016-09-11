@@ -1,0 +1,93 @@
+# depslib dependency file v1.0
+1411741917 source:c:\users\deflandre\documents\pje\tp2\main.cpp
+	<stdio.h>
+	<cv.h>
+	<highgui.h>
+	"uEye.h"
+
+1270458732 c:\program files (x86)\image\opencv2\include\opencv\cv.h
+	<chdl.h>
+	"cxcore.h"
+	"cvtypes.h"
+	"cv.hpp"
+	"cvcompat.h"
+
+1270458734 c:\program files (x86)\image\opencv2\include\opencv\cxcore.h
+	"ipl.h"
+	"ipl/ipl.h"
+	"cxtypes.h"
+	"cxerror.h"
+	"cvver.h"
+	"cxcore.hpp"
+
+1270464758 c:\program files (x86)\image\opencv2\include\opencv\cxtypes.h
+	<assert.h>
+	<stdlib.h>
+	<string.h>
+	<float.h>
+	<stdint.h>
+	<intrin.h>
+	<emmintrin.h>
+	<fastmath.h>
+	<math.h>
+	<ipl.h>
+	<ipl/ipl.h>
+
+1270458734 c:\program files (x86)\image\opencv2\include\opencv\cxerror.h
+
+1270458734 c:\program files (x86)\image\opencv2\include\opencv\cvver.h
+
+1270458734 c:\program files (x86)\image\opencv2\include\opencv\cxcore.hpp
+	"cxmisc.h"
+	<algorithm>
+	<cmath>
+	<complex>
+	<map>
+	<new>
+	<string>
+	<vector>
+	"cxoperations.hpp"
+	"cxmat.hpp"
+	"cxflann.h"
+
+1270458734 c:\program files (x86)\image\opencv2\include\opencv\cxmisc.h
+	<limits.h>
+	<malloc.h>
+	<alloca.h>
+	<stdlib.h>
+
+1270458734 c:\program files (x86)\image\opencv2\include\opencv\cxoperations.hpp
+	<string.h>
+	<limits.h>
+	<ext/atomicity.h>
+	<bits/atomicity.h>
+	"windows.h"
+
+1270458734 c:\program files (x86)\image\opencv2\include\opencv\cxmat.hpp
+	<limits.h>
+
+1270458730 c:\program files (x86)\image\opencv2\include\opencv\cxflann.h
+
+1270458730 c:\program files (x86)\image\opencv2\include\opencv\cvtypes.h
+	<assert.h>
+	<stdlib.h>
+
+1270469056 c:\program files (x86)\image\opencv2\include\opencv\cv.hpp
+
+1270458732 c:\program files (x86)\image\opencv2\include\opencv\cvcompat.h
+	<string.h>
+
+1270458734 c:\program files (x86)\image\opencv2\include\opencv\highgui.h
+	"cxcore.h"
+	<windows.h>
+	<chdl.h>
+	"highgui.hpp"
+
+1270458734 c:\program files (x86)\image\opencv2\include\opencv\highgui.hpp
+
+1394451988 c:\program files\ids\ueye\develop\include\ueye.h
+	<unistd.h>
+	<wchar.h>
+	<stdint.h>
+	<windows.h>
+

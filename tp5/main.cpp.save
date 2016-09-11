@@ -1,0 +1,277 @@
+/* --------------------------------------------------------------------------
+Acquisition sur camera IDS uEye, projet encadre IVI
+Copyright (C) 2009  Universite Lille 1
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/>.
+-------------------------------------------------------------------------- */
+
+/* --------------------------------------------------------------------------
+Inclure les fichiers d'entete
+-------------------------------------------------------------------------- */
+#include <stdio.h>
+#include <cv.h>
+#include <highgui.h>
+#include "uEye.h"
+#include <ctime>
+#include <iostream>
+
+#include "BlobResult.h"
+
+using namespace std;
+
+/* --------------------------------------------------------------------------
+Macros
+-------------------------------------------------------------------------- */
+// Message d'erreur si necessaire apres une fonction IDS
+#define IFIDSERROR(x) if (iRet != IS_SUCCESS) \
+{ \
+    fprintf (stderr, x " (Code %d)\n", iRet); \
+    is_ExitCamera (hCam); \
+    return (-1); \
+}
+
+float euclideanDist(const CvBox2D& p1, const CvBox2D& p2)
+{
+    float diffX = (p1.center.x - p2.center.x);
+    float diffY = (p1.center.y - p2.center.y);
+    return cv::sqrt(diffX*diffX + diffY*diffY);
+}
+
+/* --------------------------------------------------------------------------
+Programme principal
+-------------------------------------------------------------------------- */
+int main () {
+
+    // Definir les variables locales
+    HIDS hCam = (HIDS) 0; // handle de la camera
+    int iRet; // code de retour des fonctions uEye
+
+    // Initialiser la camera
+    iRet = is_InitCamera (&hCam, NULL);
+    // Succes ?
+    if (iRet == IS_SUCCESS && hCam != (HIDS) 0) {
+
+        // Definir les variables locales
+        int iBitsPerPixel = 8; // Nombre de bits par pixel
+        int iChannels = 1; // Nombre de canaux couleur
+        int iSizeX; // Largeur d'image
+        int iSizeY; // Hauteur d'image
+        int iMemorySizeX; // Longueur d'une ligne en memoire
+        int iMemorySizeY; // Nombre de lignes en memoire
+        int iBinningX=1, iBinningY=1; // Position du debut d'image
+        SENSORINFO sInfo; // Structure pour le format de capteur
+        char* pcMemoryImage; // Zone memoire (buffer) d'acquisition
+        int iIdImage; // ID du buffer d'acquisition
+        int iKey = -1; // Touche
+        int iNewBlobs, iOldBlobs;
+        float * dDistance;
+
+        IplImage* cvImage; // Structure image pour OpenCV
+        IplImage* result;
+        double thresh;
+
+        CBlobResult sNewBlobs;
+        CBlobResult sOldBlobs;
+        int nbBlobs;
+
+        CvFont sFont;
+        cvInitFont(&sFont, CV_FONT_HERSHEY_SIMPLEX, 0.5, 0.5);
+
+        // Création d'une "palette" de couleurs aléatoires différentes
+        // pour l'étiquetage couleur des blobs
+        CvScalar colors[100];
+        srand ( time (NULL) );
+        for (int i = 0; i<100; i++)
+        {
+            CvScalar newColor;
+            bool reallyNew;
+            do {
+                newColor = CV_RGB( rand()&255, rand()&255, rand()&255 );
+                int j = -1; reallyNew = true;
+                do {
+                    j++;
+                } while ( (colors[j].val[0] != newColor.val[0] || colors[j].val[1] != newColor.val[1]
+                        || colors[j].val[2] != newColor.val[2]) && j < i);
+                if ( (colors[j].val[0] == newColor.val[0] && colors[j].val[1] == newColor.val[1]
+                        && colors[j].val[2] == newColor.val[2]) )
+                reallyNew = false;
+            } while (!reallyNew);
+            colors[i] = newColor;
+        }
+
+        // Recuperer les informations du capteur de la camera
+        is_GetSensorInfo (hCam, &sInfo);
+        iSizeX = sInfo.nMaxWidth;
+        iSizeY = sInfo.nMaxHeight;
+
+        /* ------------------------------------------------------------------
+        Definir les parametres d'acquisition
+        ------------------------------------------------------------------ */
+
+        is_ParameterSet(hCam, IS_PARAMETERSET_CMD_LOAD_FILE, (void*)L"setting.ini", NULL);
+
+        // Creer une image uEye et allocation memoire
+        iMemorySizeX = (iSizeX / iBinningX + 7) & 0xFFFFFFF8;
+        iMemorySizeY = iSizeY / iBinningY;
+
+        iRet = is_AllocImageMem (hCam, iMemorySizeX, iMemorySizeY,
+            iBitsPerPixel, &pcMemoryImage, &iIdImage);
+        IFIDSERROR ("Erreur d'allocation memoire IDS uEye")
+        printf ("Memoire allouee pour le buffer %d, adresse 0x%08X\n",
+            iIdImage, (int) pcMemoryImage);
+
+        // Activer cette memoire (l'image acquise va y etre stockee)
+        iRet = is_SetImageMem (hCam, pcMemoryImage, iIdImage);
+        IFIDSERROR ("Erreur d'association de la memoire")
+
+        // Creer l'image openCV
+        cvImage = cvCreateImageHeader (cvSize (iMemorySizeX, iMemorySizeY),
+            IPL_DEPTH_8U, 1);
+        // Les valeurs des pixels sont dans le buffer de la camera IDS
+        cvImage->imageData = pcMemoryImage;
+
+        // Creer la fenêtre d'affichage de l'image
+        cvNamedWindow ("Acquisition", CV_WINDOW_AUTOSIZE);
+
+        // Acquérir la premiere image
+        iRet = is_FreezeVideo (hCam, IS_WAIT);
+
+        // Calcul du threshold
+        thresh = cvThreshold(cvImage, cvImage, 0, 255, cv::THRESH_OTSU);
+        result = cvCreateImage( cvSize(cvImage->width,cvImage->height), IPL_DEPTH_8U, 3);
+
+        // Boucler pour afficher les images
+        while (iKey != 27) {
+
+            sOldBlobs = sNewBlobs;
+
+            // Acquérir l'image
+            iRet = is_FreezeVideo (hCam, IS_WAIT);
+            IFIDSERROR ("Erreur d'acquisition de l'image");
+
+            // Traitement OpenCV
+
+            // Retourner l'image selon l'axe x
+            cvFlip (cvImage, NULL, 1);
+
+            // Seuil
+            cvThreshold(cvImage, cvImage, thresh, 255, cv::THRESH_BINARY);
+
+            // Recherche des blobs
+            sNewBlobs = CBlobResult(cvImage, NULL, 0);
+
+            // Filtrage
+            sNewBlobs.Filter(sNewBlobs, B_INCLUDE, CBlobGetArea(), B_INSIDE, 400, 4750);
+            sNewBlobs.Filter(sNewBlobs, B_INCLUDE, CBlobGetAxisRatio(), B_INSIDE, 0.5, 1);
+            sNewBlobs.Filter(sNewBlobs, B_EXCLUDE, CBlobGetCompactness(), B_GREATER, 5.0);
+
+            /* initialisation de la matrice de blob */
+            iOldBlobs = sOldBlobs.GetNumBlobs();
+            iNewBlobs = sNewBlobs.GetNumBlobs();
+
+            if (iOldBlobs > 0)
+            {
+                CBlob oldBlob;
+                CBlob newBlob;
+                dDistance = (float*) malloc(sizeof(float) * iNewBlobs * iOldBlobs);
+                for (int i = 0; i < iOldBlobs; i++) {
+                    oldBlob = sOldBlobs.GetBlob(i);
+                    for (int j = 0; j < iNewBlobs; j++) {
+                        newBlob = sNewBlobs.GetBlob(j);
+                        dDistance[iNewBlobs * i + j] = euclideanDist(oldBlob.GetEllipse(), newBlob.GetEllipse());
+                    }
+                }
+
+                // Affichage pour verification
+                for (int i = 0; i < iOldBlobs; i++) {
+                    for (int j = 0; j < iNewBlobs; j++) {
+                        printf (" %7.2lf", dDistance[iNewBlobs * i + j]);
+                    }
+                    printf ("\n");
+                }
+                printf ("\n");
+                
+                /* ------------------------------------------------------
+                Calcul du minimum des distances en ligne ou colonne
+                ------------------------------------------------------ */
+                if (iNewBlobs > iOldBlobs) {
+                    for(int i=0; i<iNe)
+                }
+                else {
+                    // Calcul du minimum en colonnes
+                    // A completer !!!
+                }
+            }
+
+            nbBlobs = sNewBlobs.GetNumBlobs();
+            CBlob* psBlob;
+            CvBox2D sEllipse;
+
+            // Generer une image couleur a partir de 3 plans niveaux de gris
+            cvMerge (cvImage, cvImage, cvImage, NULL,
+                result);
+
+            for(int i=0; i<nbBlobs; i++){
+                /*blob = sNewBlobs.GetBlob(i);
+                blob->FillBlob(result, colors[i]);*/
+
+                // Definir les variables locales
+                char pcEtiquette[6];
+
+                // Acces au blob dans la liste
+                psBlob = sNewBlobs.GetBlob (i);
+                // Ellipse englobante et centre du blob
+                sEllipse = psBlob->GetEllipse ();
+                // Remplissage du blob avec une couleur propre
+                psBlob->FillBlob (result, colors[psBlob->GetID ()]);
+                // Trace d'un point au centre du blob
+                cvLine (result, cvPoint ( (int) sEllipse.center.x,
+                        (int) sEllipse.center.y),
+                    cvPoint ( (int) sEllipse.center.x, (int) sEllipse.center.y),
+                    CV_RGB (0, 150, 0), 4, 8, 0);
+                // Etiquetage du blob avec son ID
+                sprintf (pcEtiquette, "%d", psBlob->GetID ());
+                cvPutText (result, pcEtiquette,
+                    cvPointFrom32f (sEllipse.center),
+                    &sFont, CV_RGB (255, 255, 255));
+                // Affichage de l'ellipse des contours de chaque blob
+                cvEllipse (result, cvPointFrom32f (sEllipse.center),
+                    cvSize ( (int) sEllipse.size.width, (int) sEllipse.size.height),
+                    sEllipse.angle, 0, 360, CV_RGB (255, 0, 0));
+            }
+
+            // Afficher l'image
+            cvShowImage ("Acquisition", result);
+            // Attendre 20 ms que l'utilisateur appuie sur une touche
+            iKey = cvWaitKey (20);
+            free(dDistance);
+        }
+
+        // Liberer la memoire et finir sans erreur
+        cvDestroyWindow ("Acquisition");
+        cvImage->imageData = NULL;
+        cvReleaseImageHeader (&cvImage);
+        is_FreeImageMem (hCam, pcMemoryImage, iIdImage);
+        is_ExitCamera (hCam);
+        return (0);
+    }
+
+    // Erreur lors de l'ouverture de la camera IDS
+    else {
+        // Afficher un message d'erreur
+        printf ("Erreur lors de l'ouverture de la camera IDS uEye" \
+            " (verifier la connexion sur l'USB)");
+        return (-1);
+    }
+}
